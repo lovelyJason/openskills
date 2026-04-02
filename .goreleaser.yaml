@@ -1,0 +1,80 @@
+version: 2
+
+project_name: openskills
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+    - go test -race ./...
+
+builds:
+  - id: openskills
+    main: ./cmd/openskills
+    binary: openskills
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X github.com/lovelyJason/openskills/internal/cli.Version={{.Version}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+brews:
+  - name: openskills
+    repository:
+      owner: lovelyJason
+      name: openskills
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/lovelyJason/openskills"
+    description: "AI editor extension manager — manage plugins, skills, and marketplaces across Codex, Claude, Cursor"
+    license: "MIT"
+    install: |
+      bin.install "openskills"
+    caveats: |
+      🛠️  openskills installed successfully!
+
+      Get started:
+        openskills marketplace add <git-url>    # add a marketplace
+        openskills plugin list                   # browse plugins
+        openskills skill list                    # browse skills
+        openskills status                        # check system
+
+      Docs: https://github.com/lovelyJason/openskills
+    test: |
+      system "#{bin}/openskills", "--version"
+
+release:
+  github:
+    owner: lovelyJason
+    name: openskills
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
