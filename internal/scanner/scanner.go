@@ -142,17 +142,30 @@ func HasCodexPlugins(repoRoot string) bool {
 	return false
 }
 
-// HasClaudePlugin checks if the repo has .claude-plugin/plugin.json at the root.
+// HasClaudePlugin checks if the repo has .claude-plugin/plugin.json or .claude-plugin/marketplace.json at the root.
 func HasClaudePlugin(repoRoot string) bool {
-	mp := filepath.Join(repoRoot, ".claude-plugin", "plugin.json")
-	_, err := os.Stat(mp)
-	return err == nil
+	dir := filepath.Join(repoRoot, ".claude-plugin")
+	for _, f := range []string{"plugin.json", "marketplace.json"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
-// ScanClaudePlugin scans the root-level .claude-plugin/plugin.json and returns it as a Resource.
+// ScanClaudePlugin scans .claude-plugin/marketplace.json or .claude-plugin/plugin.json and returns Resources.
 func ScanClaudePlugin(repoRoot, marketplaceName string) ([]resource.Resource, error) {
-	manifestPath := filepath.Join(repoRoot, ".claude-plugin", "plugin.json")
-	data, err := os.ReadFile(manifestPath)
+	dir := filepath.Join(repoRoot, ".claude-plugin")
+
+	// Try marketplace.json first (multi-plugin marketplace format)
+	mpPath := filepath.Join(dir, "marketplace.json")
+	if data, err := os.ReadFile(mpPath); err == nil {
+		return parseClaudeMarketplace(data, repoRoot, marketplaceName)
+	}
+
+	// Fallback to plugin.json (single-plugin format)
+	pluginPath := filepath.Join(dir, "plugin.json")
+	data, err := os.ReadFile(pluginPath)
 	if err != nil {
 		return nil, nil
 	}
@@ -180,6 +193,44 @@ func ScanClaudePlugin(repoRoot, marketplaceName string) ([]resource.Resource, er
 		Description: desc,
 		Category:    "Developer Tools",
 	}}, nil
+}
+
+type claudeMarketplaceJSON struct {
+	Name    string `json:"name"`
+	Plugins []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Source      string `json:"source"`
+		Category    string `json:"category"`
+	} `json:"plugins"`
+}
+
+func parseClaudeMarketplace(data []byte, repoRoot, marketplaceName string) ([]resource.Resource, error) {
+	var mp claudeMarketplaceJSON
+	if err := json.Unmarshal(data, &mp); err != nil {
+		return nil, nil
+	}
+
+	var resources []resource.Resource
+	for _, p := range mp.Plugins {
+		localPath := repoRoot
+		if p.Source != "" && p.Source != "./" {
+			localPath = filepath.Join(repoRoot, p.Source)
+		}
+		cat := p.Category
+		if cat == "" {
+			cat = "Developer Tools"
+		}
+		resources = append(resources, resource.Resource{
+			Name:        p.Name,
+			Type:        resource.TypePlugin,
+			Marketplace: marketplaceName,
+			LocalPath:   localPath,
+			Description: p.Description,
+			Category:    cat,
+		})
+	}
+	return resources, nil
 }
 
 func extractSkillDescription(skillMDPath string) string {

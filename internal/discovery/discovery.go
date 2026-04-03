@@ -73,39 +73,110 @@ func discoverClaudeMarketplaces(home string) []ResourceInfo {
 
 
 func discoverClaudeSkills(home string) []ResourceInfo {
+	var result []ResourceInfo
+
 	skillsDir := filepath.Join(home, "skills")
-	entries, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return nil
+	if entries, err := os.ReadDir(skillsDir); err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			entryPath := filepath.Join(skillsDir, e.Name())
+			fi, err := os.Stat(entryPath)
+			if err != nil || !fi.IsDir() {
+				continue
+			}
+			result = append(result, ResourceInfo{
+				Name:  e.Name(),
+				IsOSK: strings.HasPrefix(e.Name(), "osk--"),
+			})
+		}
 	}
 
-	var result []ResourceInfo
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		result = append(result, ResourceInfo{
-			Name:  e.Name(),
-			IsOSK: strings.HasPrefix(e.Name(), "osk--"),
-		})
-	}
 	return result
 }
 
 func discoverCodexPlugins() []ResourceInfo {
-	installed, err := codexmgr.InstalledPluginsFromConfig()
+	if result := discoverCodexPluginsViaRPC(); result != nil {
+		return result
+	}
+	return discoverCodexPluginsFallback()
+}
+
+func discoverCodexPluginsViaRPC() []ResourceInfo {
+	resp, err := codexmgr.RPCPluginList()
 	if err != nil {
 		return nil
 	}
 
 	var result []ResourceInfo
-	for name, enabled := range installed {
-		tag := "enabled"
-		if !enabled {
-			tag = "disabled"
+	for _, mp := range resp.Marketplaces {
+		mpDisplay := mp.Name
+		if iface := mp.Interface; iface != nil {
+			if dn, ok := iface["displayName"].(string); ok && dn != "" {
+				mpDisplay = dn
+			}
 		}
-		result = append(result, ResourceInfo{Name: name, Tag: tag})
+
+		for _, p := range mp.Plugins {
+			displayName := p.Name
+			if iface := p.Interface; iface != nil {
+				if dn, ok := iface["displayName"].(string); ok && dn != "" {
+					displayName = dn
+				}
+			}
+
+			tag := "available"
+			if p.Installed {
+				tag = "installed"
+			}
+
+			source := mpDisplay
+			if parts := strings.SplitN(p.Name, "--", 2); len(parts) == 2 {
+				source = parts[0]
+			}
+
+			result = append(result, ResourceInfo{
+				Name:   displayName,
+				Source: source,
+				Tag:    tag,
+			})
+		}
 	}
+	return result
+}
+
+func discoverCodexPluginsFallback() []ResourceInfo {
+	installed, _ := codexmgr.InstalledPluginsFromConfig()
+	if installed == nil {
+		installed = make(map[string]bool)
+	}
+
+	registered, _ := codexmgr.RegisteredPlugins()
+
+	seen := make(map[string]bool)
+	var result []ResourceInfo
+
+	for _, desc := range registered {
+		seen[desc.LocalName] = true
+		tag := "available"
+		if _, isInstalled := installed[desc.LocalName]; isInstalled {
+			tag = "installed"
+		}
+		result = append(result, ResourceInfo{
+			Name:   desc.DisplayName,
+			Source: codexmgr.LocalMarketplaceDisplay,
+			Tag:    tag,
+		})
+	}
+
+	for name := range installed {
+		if seen[name] {
+			continue
+		}
+		result = append(result, ResourceInfo{Name: name, Tag: "installed"})
+	}
+
 	return result
 }
 

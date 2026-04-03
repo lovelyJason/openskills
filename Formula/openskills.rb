@@ -44,15 +44,22 @@ class Openskills < Formula
     end
   end
 
+  def install
+    bin.install "openskills"
+    bin.install_symlink "openskills" => "osk"
+  end
+
   def caveats
     <<~EOS
       🛠️  openskills installed successfully!
 
+      Short alias available: osk
+
       Get started:
-        openskills marketplace add <git-url>    # add a marketplace
-        openskills plugin list                   # browse plugins
-        openskills skill list                    # browse skills
-        openskills status                        # check system
+        osk marketplace add <git-url>           # add a marketplace
+        osk plugin list                          # browse plugins
+        osk skill list                           # browse skills
+        osk status                               # check system
 
       Docs: https://github.com/lovelyJason/openskills
     EOS

@@ -28,19 +28,22 @@ func setPluginEnabledIn(cfgPath, localName string, enabled bool) error {
 	}
 	text := string(data)
 
-	pattern := regexp.MustCompile(fmt.Sprintf(
-		`(?ms)^\[plugins\."%s@%s"\]\n.*?(?=^\[|\z)`,
-		regexp.QuoteMeta(localName), regexp.QuoteMeta(LocalMarketplaceName),
-	))
+	headerRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(section))
 
-	if pattern.MatchString(text) {
-		text = pattern.ReplaceAllStringFunc(text, func(block string) string {
-			enabledRe := regexp.MustCompile(`(?m)^\s*enabled\s*=.*$`)
-			if enabledRe.MatchString(block) {
-				return enabledRe.ReplaceAllString(block, "enabled = "+value)
-			}
-			return strings.TrimRight(block, "\n") + "\nenabled = " + value + "\n"
-		})
+	if loc := headerRe.FindStringIndex(text); loc != nil {
+		blockStart := loc[0]
+		blockEnd := len(text)
+		if next := regexp.MustCompile(`(?m)^\[`).FindStringIndex(text[loc[1]:]); next != nil {
+			blockEnd = loc[1] + next[0]
+		}
+		block := text[blockStart:blockEnd]
+		enabledRe := regexp.MustCompile(`(?m)^\s*enabled\s*=.*$`)
+		if enabledRe.MatchString(block) {
+			block = enabledRe.ReplaceAllString(block, "enabled = "+value)
+		} else {
+			block = strings.TrimRight(block, "\n") + "\nenabled = " + value + "\n"
+		}
+		text = text[:blockStart] + block + text[blockEnd:]
 	} else {
 		if text != "" && !strings.HasSuffix(text, "\n") {
 			text += "\n"
@@ -63,12 +66,18 @@ func clearPluginConfigIn(cfgPath, localName string) error {
 		return err
 	}
 
-	pattern := regexp.MustCompile(fmt.Sprintf(
-		`(?ms)^\[plugins\."%s@%s"\]\n.*?(?=^\[|\z)`,
-		regexp.QuoteMeta(localName), regexp.QuoteMeta(LocalMarketplaceName),
-	))
+	text := string(data)
+	header := fmt.Sprintf(`[plugins."%s@%s"]`, localName, LocalMarketplaceName)
+	headerRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(header))
 
-	text := pattern.ReplaceAllString(string(data), "")
+	if loc := headerRe.FindStringIndex(text); loc != nil {
+		blockEnd := len(text)
+		if next := regexp.MustCompile(`(?m)^\[`).FindStringIndex(text[loc[1]:]); next != nil {
+			blockEnd = loc[1] + next[0]
+		}
+		text = text[:loc[0]] + text[blockEnd:]
+	}
+
 	text = regexp.MustCompile(`\n{3,}`).ReplaceAllString(text, "\n\n")
 	text = strings.TrimLeft(text, "\n")
 
@@ -77,6 +86,51 @@ func clearPluginConfigIn(cfgPath, localName string) error {
 
 func InstalledPluginsFromConfig() (map[string]bool, error) {
 	return installedPluginsFromConfig()
+}
+
+type InstalledPlugin struct {
+	Name        string
+	Marketplace string
+	Enabled     bool
+}
+
+// AllInstalledPlugins reads every [plugins."name@marketplace"] section from config.toml.
+func AllInstalledPlugins() ([]InstalledPlugin, error) {
+	data, err := os.ReadFile(configPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	text := string(data)
+	pattern := regexp.MustCompile(`(?m)^\[plugins\."([^"]+)@([^"]+)"\]`)
+	matches := pattern.FindAllStringSubmatchIndex(text, -1)
+
+	var result []InstalledPlugin
+	for _, loc := range matches {
+		pluginName := text[loc[2]:loc[3]]
+		marketplace := text[loc[4]:loc[5]]
+		blockStart := loc[1]
+		blockEnd := len(text)
+		nextSection := regexp.MustCompile(`(?m)^\[`).FindStringIndex(text[blockStart:])
+		if nextSection != nil {
+			blockEnd = blockStart + nextSection[0]
+		}
+		block := text[blockStart:blockEnd]
+		enabled := false
+		enabledRe := regexp.MustCompile(`(?m)^\s*enabled\s*=\s*(\w+)`)
+		if m := enabledRe.FindStringSubmatch(block); m != nil {
+			enabled = m[1] == "true"
+		}
+		result = append(result, InstalledPlugin{
+			Name:        pluginName,
+			Marketplace: marketplace,
+			Enabled:     enabled,
+		})
+	}
+	return result, nil
 }
 
 func installedPluginsFromConfig() (map[string]bool, error) {

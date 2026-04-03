@@ -10,13 +10,16 @@ import (
 	"github.com/lovelyJason/openskills/internal/discovery"
 	"github.com/lovelyJason/openskills/internal/marketplace"
 	"github.com/lovelyJason/openskills/internal/resource"
+	"github.com/lovelyJason/openskills/internal/scanner"
 	"github.com/lovelyJason/openskills/internal/state"
 	"github.com/lovelyJason/openskills/internal/target"
 	"github.com/lovelyJason/openskills/internal/ui"
 )
 
 func (a *App) newListCmd() *cobra.Command {
-	return &cobra.Command{
+	var targets []string
+
+	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List all installed resources across all targets",
@@ -26,13 +29,35 @@ func (a *App) newListCmd() *cobra.Command {
 				return err
 			}
 
+			targetSet := make(map[string]bool, len(targets))
+			for _, t := range targets {
+				targetSet[t] = true
+			}
+			filterByTarget := len(targetSet) > 0
+
 			fmt.Println()
 			fmt.Println(ui.RenderAppHeader(Version, len(st.Marketplaces), len(st.Installations)))
 			fmt.Println()
 
+			if len(st.Marketplaces) > 0 {
+				renderRegisteredSources(st)
+			}
+
 			if len(st.Installations) > 0 {
 				var pluginItems, skillItems []ui.ListItem
 				for _, inst := range st.Installations {
+					if filterByTarget {
+						hasTarget := false
+						for t := range inst.Targets {
+							if targetSet[t] {
+								hasTarget = true
+								break
+							}
+						}
+						if !hasTarget {
+							continue
+						}
+					}
 					item := ui.ListItem{Name: inst.ID, IsOSK: true}
 					var tNames []string
 					for t := range inst.Targets {
@@ -61,6 +86,9 @@ func (a *App) newListCmd() *cobra.Command {
 				if !adapter.Detect() {
 					continue
 				}
+				if filterByTarget && !targetSet[adapter.Name()] {
+					continue
+				}
 				switch adapter.Name() {
 				case "claude":
 					renderClaudePlatform()
@@ -74,6 +102,30 @@ func (a *App) newListCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringSliceVarP(&targets, "target", "t", nil, "Filter by target editors (codex,claude,cursor)")
+	return cmd
+}
+
+func renderRegisteredSources(st *state.Store) {
+	var sources []ui.SourceInfo
+	for _, m := range st.Marketplaces {
+		src := ui.SourceInfo{Name: m.Name, SourceType: m.Sources.Label()}
+
+		resources, _ := scanner.ScanAll(m.LocalPath, m.Name)
+		for _, r := range resources {
+			if r.Type == resource.TypePlugin {
+				src.Plugins++
+			} else {
+				src.Skills++
+			}
+			if len(src.SampleNames) < 8 {
+				src.SampleNames = append(src.SampleNames, r.Name)
+			}
+		}
+		sources = append(sources, src)
+	}
+	fmt.Println(ui.RenderSourcesSection(sources))
 }
 
 func renderClaudePlatform() {
@@ -99,7 +151,7 @@ func renderClaudePlatform() {
 	if len(res.Skills) > 0 {
 		items := make([]ui.ListItem, len(res.Skills))
 		for i, s := range res.Skills {
-			items[i] = ui.ListItem{Name: s.Name, IsOSK: s.IsOSK}
+			items[i] = ui.ListItem{Name: s.Name, Tag: s.Tag, IsOSK: s.IsOSK}
 		}
 		sections = append(sections, ui.SectionData{Title: "Skills", Icon: "🎯", Items: items})
 	}
@@ -120,11 +172,36 @@ func renderCodexPlatform() {
 	}
 
 	if len(res.Plugins) > 0 {
-		items := make([]ui.ListItem, len(res.Plugins))
-		for i, p := range res.Plugins {
-			items[i] = ui.ListItem{Name: p.Name, Tag: p.Tag, IsOSK: p.IsOSK}
+		type pluginGroup struct {
+			name  string
+			items []ui.ListItem
 		}
-		sections = append(sections, ui.SectionData{Title: "Installed Plugins", Icon: "🔌", Items: items})
+		var groups []pluginGroup
+		groupIdx := make(map[string]int)
+
+		for _, p := range res.Plugins {
+			src := p.Source
+			if src == "" {
+				src = "Other"
+			}
+			if idx, ok := groupIdx[src]; ok {
+				groups[idx].items = append(groups[idx].items, ui.ListItem{Name: p.Name, Tag: p.Tag, IsOSK: p.IsOSK})
+			} else {
+				groupIdx[src] = len(groups)
+				groups = append(groups, pluginGroup{
+					name:  src,
+					items: []ui.ListItem{{Name: p.Name, Tag: p.Tag, IsOSK: p.IsOSK}},
+				})
+			}
+		}
+
+		for _, g := range groups {
+			sections = append(sections, ui.SectionData{
+				Title: "Plugins · " + g.name,
+				Icon:  "🔌",
+				Items: g.items,
+			})
+		}
 	}
 
 	if len(res.Skills) > 0 {
@@ -193,10 +270,11 @@ func (a *App) newStatusCmd() *cobra.Command {
 			fmt.Println()
 			mpCount, srCount := 0, 0
 			for _, m := range st.Marketplaces {
-				if m.Source == state.SourceSkillRepo {
-					srCount++
-				} else {
+				if m.Sources.Has(state.SourceMarketplace) {
 					mpCount++
+				}
+				if m.Sources.Has(state.SourceSkillRepo) {
+					srCount++
 				}
 			}
 			fmt.Printf("  \033[1mMarketplaces:\033[0m %d registered\n", mpCount)
@@ -227,10 +305,7 @@ func (a *App) newUpdateCmd() *cobra.Command {
 
 			for i := range st.Marketplaces {
 				m := &st.Marketplaces[i]
-				sourceLabel := "marketplace"
-				if m.Source == state.SourceSkillRepo {
-					sourceLabel = "skill repo"
-				}
+				sourceLabel := m.Sources.Label()
 				if m.PinnedVer != "" {
 					ui.Warn("%s (%s) pinned to %s, skipping", m.Name, sourceLabel, m.PinnedVer)
 					continue
@@ -273,10 +348,7 @@ func (a *App) newDoctorCmd() *cobra.Command {
 			}
 
 			for _, m := range st.Marketplaces {
-				sourceLabel := "Marketplace"
-				if m.Source == state.SourceSkillRepo {
-					sourceLabel = "Skill repo"
-				}
+				sourceLabel := m.Sources.Label()
 				_, err := marketplace.ListResources(&m, "")
 				if err != nil {
 					ui.Error("Cannot scan %s %s: %v", sourceLabel, m.Name, err)

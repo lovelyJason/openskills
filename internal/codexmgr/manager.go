@@ -12,54 +12,34 @@ func NewManager() *Manager {
 	return &Manager{}
 }
 
-func (m *Manager) MarketplaceAdd(repoDir, url, name string) error {
-	reg, err := loadRegistry()
-	if err != nil {
-		return fmt.Errorf("load registry: %w", err)
-	}
-
-	reg.register(name, url, repoDir, "git")
-	return saveRegistry(reg)
+func (m *Manager) MarketplaceAdd(repoDir, name string) error {
+	return m.SyncSingle(repoDir, name)
 }
 
 func (m *Manager) MarketplaceRemove(name string) error {
-	reg, err := loadRegistry()
-	if err != nil {
-		return fmt.Errorf("load registry: %w", err)
-	}
-
-	entry := reg.find(name)
-	if entry == nil {
-		return fmt.Errorf("marketplace %q not found in codex registry", name)
-	}
-
 	ps, _ := loadPluginState()
+
+	var remaining []PluginDescriptor
 	for _, plugin := range ps.Plugins {
-		if plugin.Marketplace != name {
-			continue
+		if plugin.Marketplace == name {
+			os.RemoveAll(pluginCacheRoot(plugin.LocalName))
+			clearPluginConfig(plugin.LocalName)
+			prepared := filepath.Join(localPluginDir(), plugin.LocalName)
+			os.RemoveAll(prepared)
+		} else {
+			remaining = append(remaining, plugin)
 		}
-		os.RemoveAll(pluginCacheRoot(plugin.LocalName))
-		clearPluginConfig(plugin.LocalName)
-		prepared := filepath.Join(localPluginDir(), plugin.LocalName)
-		os.RemoveAll(prepared)
 	}
 
-	reg.remove(name)
-	return saveRegistry(reg)
+	savePluginState(&PluginState{Version: 1, Plugins: remaining})
+
+	removePluginsFromMarketplaceJSON(name)
+
+	return nil
 }
 
 func (m *Manager) MarketplaceUpdate(name, repoDir string) error {
-	reg, err := loadRegistry()
-	if err != nil {
-		return fmt.Errorf("load registry: %w", err)
-	}
-
-	entry := reg.find(name)
-	if entry != nil {
-		entry.RepoDir = repoDir
-		return saveRegistry(reg)
-	}
-	return nil
+	return m.SyncSingle(repoDir, name)
 }
 
 func (m *Manager) PluginInstall(desc PluginDescriptor) (fallback bool, err error) {
@@ -109,12 +89,40 @@ func (m *Manager) PluginUninstall(desc PluginDescriptor) (fallback bool, err err
 	return true, nil
 }
 
-func (m *Manager) Sync() error {
-	reg, err := loadRegistry()
-	if err != nil {
-		return fmt.Errorf("load registry: %w", err)
+func (m *Manager) SyncSingle(repoDir, name string) error {
+	ps, _ := loadPluginState()
+
+	var otherPlugins []PluginDescriptor
+	for _, p := range ps.Plugins {
+		if p.Marketplace != name {
+			otherPlugins = append(otherPlugins, p)
+		}
 	}
-	_, warnings := syncAggregate(reg)
+
+	newPlugins := scanRepoPlugins(repoDir, name)
+	lpDir := localPluginDir()
+	os.MkdirAll(lpDir, 0755)
+
+	var writtenNew []PluginDescriptor
+	for _, plugin := range newPlugins {
+		dest := filepath.Join(lpDir, plugin.LocalName)
+		ok, _ := prepareLocalPluginCopy(dest, plugin.PluginDir, plugin.LocalName)
+		if !ok {
+			continue
+		}
+		plugin.PreparedDir = dest
+		writtenNew = append(writtenNew, plugin)
+	}
+
+	allPlugins := append(otherPlugins, writtenNew...)
+	savePluginState(&PluginState{Version: 1, Plugins: allPlugins})
+	rebuildMarketplaceJSON(allPlugins)
+
+	return nil
+}
+
+func (m *Manager) SyncAll(repos []RepoEntry) error {
+	_, warnings := syncAggregate(repos)
 	for _, w := range warnings {
 		fmt.Fprintf(os.Stderr, "  [codex] warning: %s\n", w)
 	}
@@ -130,7 +138,6 @@ func (m *Manager) CleanupAll() error {
 		os.RemoveAll(prepared)
 	}
 
-	os.Remove(registryFile())
 	os.Remove(pluginStateFile())
 	os.Remove(marketplacePath())
 
@@ -143,6 +150,20 @@ func (m *Manager) BuiltinPluginList() ([]map[string]interface{}, error) {
 
 func (m *Manager) InstalledPluginList() (map[string]bool, error) {
 	return installedPluginsFromConfig()
+}
+
+// RegisteredPlugins returns all plugins from the opencodex plugin state
+// (registered via marketplace add / sync), regardless of install status.
+func (m *Manager) RegisteredPlugins() ([]PluginDescriptor, error) {
+	ps, err := loadPluginState()
+	if err != nil {
+		return nil, err
+	}
+	return ps.Plugins, nil
+}
+
+func RegisteredPlugins() ([]PluginDescriptor, error) {
+	return NewManager().RegisteredPlugins()
 }
 
 func (m *Manager) FindPluginDescriptor(marketplace, pluginName string) (*PluginDescriptor, error) {

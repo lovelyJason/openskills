@@ -51,8 +51,19 @@ func (a *App) codexSyncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			st, err := a.stateMgr.Load()
+			if err != nil {
+				return err
+			}
+
+			var repos []codexmgr.RepoEntry
+			for _, m := range st.Marketplaces {
+				repos = append(repos, codexmgr.RepoEntry{Name: m.Name, RepoDir: m.LocalPath})
+			}
+
 			ui.Info("Syncing Codex marketplace...")
-			if err := codex.Manager().Sync(); err != nil {
+			if err := codex.Manager().SyncAll(repos); err != nil {
 				return err
 			}
 			ui.Success("Codex marketplace synced")

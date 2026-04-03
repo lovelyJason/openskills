@@ -86,13 +86,11 @@ func (c *Claude) installPlugin(res *resource.Resource) (*InstallResult, error) {
 }
 
 func (c *Claude) installSkill(res *resource.Resource, mode resource.InstallMode, sourcePath string) (*InstallResult, error) {
-	version := res.Version
-	if version == "" {
-		version = "latest"
-	}
-	skillDir := filepath.Join(paths.ClaudeHome(), "plugins", "cache", "osk", res.Name, version, "skills", res.Name)
+	skillsDir := filepath.Join(paths.ClaudeHome(), "skills")
+	skillName := fmt.Sprintf("osk--%s--%s", res.Marketplace, res.Name)
+	skillDir := filepath.Join(skillsDir, skillName)
 
-	if err := os.MkdirAll(filepath.Dir(skillDir), 0755); err != nil {
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
 		return nil, err
 	}
 	os.RemoveAll(skillDir)
@@ -120,8 +118,9 @@ func (c *Claude) Uninstall(_ context.Context, res *resource.Resource) error {
 		}
 		return cli.PluginUninstall(res.Name)
 	case resource.TypeSkill:
-		cacheRoot := filepath.Join(paths.ClaudeHome(), "plugins", "cache", "osk", res.Name)
-		os.RemoveAll(cacheRoot)
+		skillName := fmt.Sprintf("osk--%s--%s", res.Marketplace, res.Name)
+		skillDir := filepath.Join(paths.ClaudeHome(), "skills", skillName)
+		os.RemoveAll(skillDir)
 		return nil
 	}
 	return nil
@@ -134,8 +133,9 @@ func (c *Claude) IsInstalled(res *resource.Resource) (bool, error) {
 		_, err := os.Stat(cacheRoot)
 		return err == nil, nil
 	case resource.TypeSkill:
-		cacheRoot := filepath.Join(paths.ClaudeHome(), "plugins", "cache", "osk", res.Name)
-		_, err := os.Stat(cacheRoot)
+		skillName := fmt.Sprintf("osk--%s--%s", res.Marketplace, res.Name)
+		skillDir := filepath.Join(paths.ClaudeHome(), "skills", skillName)
+		_, err := os.Lstat(skillDir)
 		return err == nil, nil
 	}
 	return false, nil

@@ -35,8 +35,8 @@ func (c *Codex) SupportedResources() []resource.Type {
 	return []resource.Type{resource.TypePlugin, resource.TypeSkill}
 }
 
-func (c *Codex) OnMarketplaceAdd(_ context.Context, url, name, repoDir string) error {
-	return c.mgr.MarketplaceAdd(repoDir, url, name)
+func (c *Codex) OnMarketplaceAdd(_ context.Context, _, name, repoDir string) error {
+	return c.mgr.MarketplaceAdd(repoDir, name)
 }
 
 func (c *Codex) OnMarketplaceRemove(_ context.Context, name string) error {

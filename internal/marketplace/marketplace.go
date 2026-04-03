@@ -2,6 +2,7 @@ package marketplace
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -36,6 +37,18 @@ func RepoDir(name string) string {
 	return filepath.Join(paths.ReposDir(), name)
 }
 
+// ExpandURL expands shorthand like "user/repo" to a full GitHub HTTPS URL.
+func ExpandURL(raw string) string {
+	if strings.Contains(raw, "://") || strings.Contains(raw, "@") {
+		return raw
+	}
+	parts := strings.SplitN(raw, "/", 3)
+	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+		return "https://github.com/" + raw + ".git"
+	}
+	return raw
+}
+
 func Add(st *state.Store, url, name string) (*state.MarketplaceEntry, error) {
 	return AddWithSource(st, url, name, state.SourceMarketplace)
 }
@@ -59,14 +72,38 @@ func AddWithSource(st *state.Store, url, name string, source state.SourceType) (
 			return nil, err
 		}
 		existing.LastUpdated = time.Now()
-		existing.Source = source
+		existing.Sources = existing.Sources.Add(source)
 		st.UpsertMarketplace(*existing)
 		return existing, nil
 	}
 
+	if byURL := st.FindMarketplaceByURL(url); byURL != nil {
+		byURL.LastUpdated = time.Now()
+		byURL.Sources = byURL.Sources.Add(source)
+		st.UpsertMarketplace(*byURL)
+		return byURL, nil
+	}
+
 	repoDir := RepoDir(name)
-	if err := gitutil.Clone(url, repoDir); err != nil {
-		return nil, err
+
+	if gitutil.IsGitRepo(repoDir) {
+		remote, _ := gitutil.RemoteURL(repoDir)
+		if remote == url || remote == strings.TrimSuffix(url, ".git") || strings.TrimSuffix(remote, ".git") == strings.TrimSuffix(url, ".git") {
+			if err := gitutil.Pull(repoDir); err != nil {
+				return nil, err
+			}
+		} else {
+			os.RemoveAll(repoDir)
+			if err := gitutil.Clone(url, repoDir); err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		os.RemoveAll(repoDir)
+		if err := gitutil.Clone(url, repoDir); err != nil {
+			os.RemoveAll(repoDir)
+			return nil, err
+		}
 	}
 
 	branch, _ := gitutil.CurrentBranch(repoDir)
@@ -76,7 +113,7 @@ func AddWithSource(st *state.Store, url, name string, source state.SourceType) (
 		URL:         url,
 		LocalPath:   repoDir,
 		Branch:      branch,
-		Source:      source,
+		Sources:     state.SourceTypes{source},
 		LastUpdated: time.Now(),
 	}
 	st.UpsertMarketplace(entry)

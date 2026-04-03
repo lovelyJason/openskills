@@ -152,6 +152,48 @@ func callCodexAppServer(method string, params map[string]interface{}) (bool, str
 	return true, string(result)
 }
 
+type PluginSummary struct {
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Installed     bool                   `json:"installed"`
+	Enabled       bool                   `json:"enabled"`
+	InstallPolicy string                `json:"installPolicy"`
+	Interface     map[string]interface{} `json:"interface,omitempty"`
+}
+
+type MarketplaceListing struct {
+	Name      string                 `json:"name"`
+	Interface map[string]interface{} `json:"interface,omitempty"`
+	Plugins   []PluginSummary        `json:"plugins"`
+}
+
+type PluginListResponse struct {
+	Marketplaces []MarketplaceListing `json:"marketplaces"`
+}
+
+func RPCPluginList() (*PluginListResponse, error) {
+	client, err := newRPCClient()
+	if err != nil {
+		return nil, err
+	}
+	defer client.close()
+
+	if err := client.initialize(); err != nil {
+		return nil, err
+	}
+
+	result, err := client.call("plugin/list", map[string]interface{}{})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp PluginListResponse
+	if err := json.Unmarshal(result, &resp); err != nil {
+		return nil, fmt.Errorf("parse plugin/list response: %w", err)
+	}
+	return &resp, nil
+}
+
 func rpcPluginInstall(pluginName string) (bool, string) {
 	return callCodexAppServer("plugin/install", map[string]interface{}{
 		"marketplacePath": marketplacePath(),

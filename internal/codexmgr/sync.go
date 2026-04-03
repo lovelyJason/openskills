@@ -124,19 +124,23 @@ func buildLocalMarketplace() map[string]interface{} {
 	}
 }
 
-func syncAggregate(reg *Registry) ([]PluginDescriptor, []string) {
+type RepoEntry struct {
+	Name    string
+	RepoDir string
+}
+
+func syncAggregate(repos []RepoEntry) ([]PluginDescriptor, []string) {
 	ps, _ := loadPluginState()
 	previous := ps.localNames()
 	var warnings []string
 
 	var allPlugins []PluginDescriptor
-	for _, mp := range reg.Marketplaces {
-		repoPath := mp.RepoDir
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			warnings = append(warnings, fmt.Sprintf("Marketplace %s repo missing: %s", mp.Name, repoPath))
+	for _, mp := range repos {
+		if _, err := os.Stat(mp.RepoDir); os.IsNotExist(err) {
+			warnings = append(warnings, fmt.Sprintf("Marketplace %s repo missing: %s", mp.Name, mp.RepoDir))
 			continue
 		}
-		allPlugins = append(allPlugins, scanRepoPlugins(repoPath, mp.Name)...)
+		allPlugins = append(allPlugins, scanRepoPlugins(mp.RepoDir, mp.Name)...)
 	}
 
 	lpDir := localPluginDir()
@@ -222,6 +226,60 @@ func ensurePreparedPluginSource(desc *PluginDescriptor) (bool, string) {
 		desc.PreparedDir = dest
 	}
 	return ok, status
+}
+
+func rebuildMarketplaceJSON(plugins []PluginDescriptor) {
+	payload := buildLocalMarketplace()
+	entries := make([]interface{}, 0, len(plugins))
+	for _, plugin := range plugins {
+		entries = append(entries, map[string]interface{}{
+			"name": plugin.LocalName,
+			"source": map[string]interface{}{
+				"source": "local",
+				"path":   fmt.Sprintf("./plugins/%s", plugin.LocalName),
+			},
+			"policy": map[string]interface{}{
+				"installation":   "AVAILABLE",
+				"authentication": "ON_INSTALL",
+			},
+			"category": plugin.Category,
+		})
+	}
+	payload["plugins"] = entries
+	os.MkdirAll(marketplaceDir(), 0755)
+	writeJSON(marketplacePath(), payload)
+}
+
+func removePluginsFromMarketplaceJSON(marketplace string) {
+	data, err := os.ReadFile(marketplacePath())
+	if err != nil {
+		return
+	}
+	var mp map[string]interface{}
+	if err := json.Unmarshal(data, &mp); err != nil {
+		return
+	}
+	plugins, ok := mp["plugins"].([]interface{})
+	if !ok {
+		return
+	}
+
+	prefix := marketplace + "--"
+	var kept []interface{}
+	for _, p := range plugins {
+		pm, ok := p.(map[string]interface{})
+		if !ok {
+			kept = append(kept, p)
+			continue
+		}
+		name, _ := pm["name"].(string)
+		if strings.HasPrefix(name, prefix) {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	mp["plugins"] = kept
+	writeJSON(marketplacePath(), mp)
 }
 
 func readOfficialMarketplace() ([]map[string]interface{}, error) {

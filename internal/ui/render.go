@@ -123,8 +123,19 @@ func RenderEditorSection(name string, extra string, sections []SectionData) stri
 		sb.WriteString(sectionHeaderStyle.Render(fmt.Sprintf(" %s %s ", icon, sec.Title)) + " " + countStr)
 		sb.WriteString("\n")
 
+		displayItems := sec.Items
+		totalCount := len(sec.Items)
+		truncated := false
+		if sec.MaxShow > 0 && len(sec.Items) > sec.MaxShow {
+			displayItems = sec.Items[:sec.MaxShow]
+			truncated = true
+			if sec.Total > 0 {
+				totalCount = sec.Total
+			}
+		}
+
 		maxNameLen := 0
-		for _, item := range sec.Items {
+		for _, item := range displayItems {
 			nameLen := len(item.Name)
 			if item.IsOSK {
 				nameLen += 4
@@ -137,8 +148,13 @@ func RenderEditorSection(name string, extra string, sections []SectionData) stri
 			maxNameLen = 36
 		}
 
-		for j, item := range sec.Items {
-			isLast := j == len(sec.Items)-1
+		lastIdx := len(displayItems) - 1
+		if truncated {
+			lastIdx = -1
+		}
+
+		for j, item := range displayItems {
+			isLast := j == len(displayItems)-1 && !truncated
 			prefix := " ├─"
 			if isLast {
 				prefix = " └─"
@@ -176,8 +192,22 @@ func RenderEditorSection(name string, extra string, sections []SectionData) stri
 			}
 
 			sb.WriteString(line)
-			if j < len(sec.Items)-1 || i < len(sections)-1 {
+			sb.WriteString("\n")
+			_ = lastIdx
+		}
+
+		if truncated {
+			remaining := totalCount - len(displayItems)
+			moreText := dimStyle.Render(" └─ ") + dimStyle.Render(fmt.Sprintf("... and %d more", remaining))
+			sb.WriteString(moreText)
+			if i < len(sections)-1 {
 				sb.WriteString("\n")
+			}
+		} else if len(displayItems) > 0 {
+			content := sb.String()
+			if strings.HasSuffix(content, "\n") && i == len(sections)-1 {
+				sb.Reset()
+				sb.WriteString(strings.TrimRight(content, "\n"))
 			}
 		}
 	}
@@ -186,9 +216,75 @@ func RenderEditorSection(name string, extra string, sections []SectionData) stri
 }
 
 type SectionData struct {
-	Title string
-	Icon  string
-	Items []ListItem
+	Title    string
+	Icon     string
+	Items    []ListItem
+	MaxShow  int // if > 0, truncate and show "... and N more"
+	Total    int // total count (used with MaxShow for truncation message)
+}
+
+type SourceInfo struct {
+	Name       string
+	SourceType string // "marketplace" or "skill repo"
+	Plugins    int
+	Skills     int
+	SampleNames []string
+}
+
+func RenderSourcesSection(sources []SourceInfo) string {
+	var sb strings.Builder
+
+	header := editorTitleStyle.Render("Registered Sources")
+	sb.WriteString(header)
+	sb.WriteString("\n")
+
+	for i, src := range sources {
+		isLast := i == len(sources)-1
+		prefix := " ├─"
+		connector := " │ "
+		if isLast {
+			prefix = " └─"
+			connector = "   "
+		}
+
+		typeTag := tagCommunityStyle.Render(src.SourceType)
+		counts := ""
+		if src.Plugins > 0 && src.Skills > 0 {
+			counts = fmt.Sprintf("%dp/%ds", src.Plugins, src.Skills)
+		} else if src.Plugins > 0 {
+			counts = fmt.Sprintf("%d plugins", src.Plugins)
+		} else if src.Skills > 0 {
+			counts = fmt.Sprintf("%d skills", src.Skills)
+		}
+
+		namePart := greenStyle.Render(src.Name)
+		metaPart := typeTag + "  " + dimStyle.Render(counts)
+		sb.WriteString(dimStyle.Render(prefix) + " " + namePart + "  " + metaPart)
+		sb.WriteString("\n")
+
+		maxSample := 5
+		if len(src.SampleNames) < maxSample {
+			maxSample = len(src.SampleNames)
+		}
+		total := src.Plugins + src.Skills
+		for j := 0; j < maxSample; j++ {
+			samplePrefix := connector + dimStyle.Render("├─")
+			isLastSample := j == maxSample-1 && maxSample >= total
+			if isLastSample {
+				samplePrefix = connector + dimStyle.Render("└─")
+			}
+			sb.WriteString(samplePrefix + " " + dimStyle.Render(src.SampleNames[j]))
+			sb.WriteString("\n")
+		}
+		if total > maxSample {
+			remaining := total - maxSample
+			sb.WriteString(connector + dimStyle.Render("└─") + " " + dimStyle.Render(fmt.Sprintf("... and %d more", remaining)))
+			sb.WriteString("\n")
+		}
+	}
+
+	content := strings.TrimRight(sb.String(), "\n")
+	return boxStyle.Width(60).Render(content)
 }
 
 func renderTag(tag string) string {
@@ -203,10 +299,14 @@ func renderTag(tag string) string {
 		return tagSystemStyle.Render("System")
 	case "Agents":
 		return tagAgentsStyle.Render("Agents")
+	case "installed":
+		return tagEnabledStyle.Render("✓ Installed")
 	case "enabled":
 		return tagEnabledStyle.Render("✓ enabled")
 	case "disabled":
 		return tagDisabledStyle.Render("✗ disabled")
+	case "available":
+		return dimStyle.Render("Available")
 	default:
 		return tagAgentsStyle.Render(tag)
 	}

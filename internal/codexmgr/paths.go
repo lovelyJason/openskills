@@ -15,10 +15,6 @@ func stateDir() string {
 	return filepath.Join(paths.CodexHome(), "opencodex")
 }
 
-func registryFile() string {
-	return filepath.Join(stateDir(), "marketplaces.json")
-}
-
 func pluginStateFile() string {
 	return filepath.Join(stateDir(), "plugins.json")
 }

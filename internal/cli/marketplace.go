@@ -10,7 +10,6 @@ import (
 	"github.com/lovelyJason/openskills/internal/gitutil"
 	"github.com/lovelyJason/openskills/internal/marketplace"
 	"github.com/lovelyJason/openskills/internal/scanner"
-	"github.com/lovelyJason/openskills/internal/state"
 	"github.com/lovelyJason/openskills/internal/target"
 	"github.com/lovelyJason/openskills/internal/ui"
 )
@@ -43,7 +42,7 @@ func (a *App) marketplaceAddCmd() *cobra.Command {
 		Short: "Add a marketplace repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			url := args[0]
+			url := marketplace.ExpandURL(args[0])
 
 			st, err := a.stateMgr.Load()
 			if err != nil {
@@ -181,10 +180,7 @@ func (a *App) marketplaceListCmd() *cobra.Command {
 					pinned = fmt.Sprintf(" (pinned: %s)", m.PinnedVer)
 				}
 
-				sourceLabel := "marketplace"
-				if m.Source == state.SourceSkillRepo {
-					sourceLabel = "skill repo"
-				}
+				sourceLabel := m.Sources.Label()
 
 				plugins, _ := scanner.ScanPlugins(m.LocalPath, m.Name)
 				skills, _ := scanner.ScanSkills(m.LocalPath, m.Name)
@@ -251,7 +247,9 @@ func (a *App) marketplaceUpdateCmd() *cobra.Command {
 }
 
 func (a *App) marketplaceRemoveCmd() *cobra.Command {
-	return &cobra.Command{
+	var targets []string
+
+	cmd := &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove a marketplace",
 		Args:  cobra.ExactArgs(1),
@@ -267,6 +265,65 @@ func (a *App) marketplaceRemoveCmd() *cobra.Command {
 				return fmt.Errorf("marketplace %q not found", name)
 			}
 
+			targetNames, err := a.resolveTargets(targets)
+			if err != nil {
+				return err
+			}
+
+			if len(targetNames) > 0 {
+				var filtered []string
+				for _, t := range targetNames {
+					if !a.registry.SupportsMarketplace(t) {
+						ui.Dim("  %s — marketplace not supported, skipped", t)
+						continue
+					}
+					filtered = append(filtered, t)
+				}
+				targetNames = filtered
+			} else {
+				var options []ui.SelectOption
+				for _, tName := range a.registry.AvailableNames() {
+					if !a.registry.SupportsMarketplace(tName) {
+						options = append(options, ui.SelectOption{
+							Label: tName, Value: tName,
+							Disabled: true, DisabledMsg: "marketplace not supported",
+						})
+						continue
+					}
+					options = append(options, ui.SelectOption{Label: tName, Value: tName})
+				}
+
+				enabledCount := 0
+				for _, o := range options {
+					if !o.Disabled {
+						enabledCount++
+					}
+				}
+				if enabledCount == 0 {
+					ui.Warn("No editors with marketplace support detected")
+					return nil
+				}
+				if enabledCount == 1 {
+					for _, o := range options {
+						if !o.Disabled {
+							targetNames = []string{o.Value}
+							break
+						}
+					}
+					ui.Info("Target: %s", targetNames[0])
+				} else {
+					targetNames, err = ui.MultiSelectEx("Select target editors to remove from:", options)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
+			if len(targetNames) == 0 {
+				ui.Warn("No targets selected, aborted")
+				return nil
+			}
+
 			installations := st.InstallationsByMarketplace(name)
 			if len(installations) > 0 {
 				confirmed, err := ui.Confirm(fmt.Sprintf(
@@ -277,7 +334,15 @@ func (a *App) marketplaceRemoveCmd() *cobra.Command {
 				}
 			}
 
+			selectedTargets := make(map[string]bool, len(targetNames))
+			for _, t := range targetNames {
+				selectedTargets[t] = true
+			}
+
 			a.fireMarketplaceHooks(func(hook target.MarketplaceHook, adapterName string) {
+				if !selectedTargets[adapterName] {
+					return
+				}
 				if err := hook.OnMarketplaceRemove(context.Background(), name); err != nil {
 					ui.Warn("[%s] remove hook: %v", adapterName, err)
 				}
@@ -285,10 +350,13 @@ func (a *App) marketplaceRemoveCmd() *cobra.Command {
 
 			os.RemoveAll(entry.LocalPath)
 			st.RemoveMarketplace(name)
-			ui.Success("Removed marketplace: %s", name)
+			ui.Success("Removed marketplace: %s (targets: %v)", name, targetNames)
 			return a.stateMgr.Save(st)
 		},
 	}
+
+	cmd.Flags().StringSliceVarP(&targets, "target", "t", nil, "Target editors (codex,claude,cursor)")
+	return cmd
 }
 
 func (a *App) marketplacePinCmd() *cobra.Command {

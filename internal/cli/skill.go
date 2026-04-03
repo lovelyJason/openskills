@@ -44,7 +44,7 @@ func (a *App) skillAddCmd() *cobra.Command {
 		Short: "Add a skill repository (any Git repo with a skills/ directory)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			url := args[0]
+			url := marketplace.ExpandURL(args[0])
 
 			st, err := a.stateMgr.Load()
 			if err != nil {
@@ -96,7 +96,7 @@ func (a *App) skillRemoveSourceCmd() *cobra.Command {
 			if entry == nil {
 				return fmt.Errorf("skill repo %q not found", name)
 			}
-			if entry.Source != state.SourceSkillRepo {
+			if !entry.Sources.Has(state.SourceSkillRepo) {
 				return fmt.Errorf("%q is a marketplace, use 'openskills marketplace remove' instead", name)
 			}
 
@@ -149,10 +149,7 @@ func (a *App) skillListCmd() *cobra.Command {
 					continue
 				}
 
-				sourceLabel := "marketplace"
-				if m.Source == state.SourceSkillRepo {
-					sourceLabel = "skill repo"
-				}
+				sourceLabel := m.Sources.Label()
 				fmt.Printf("\n  \033[1m%s\033[0m (%s)\n", m.Name, sourceLabel)
 				for _, s := range skills {
 					installed := ""
