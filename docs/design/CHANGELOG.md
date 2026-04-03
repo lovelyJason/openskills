@@ -152,17 +152,17 @@ Docs: https://github.com/lovelyJason/openskills
 
 ---
 
-## 2026-04-01 第三轮迭代：opencodex.sh 完整移植 + Claude CLI 对接
+## 2026-04-01 第三轮迭代：原 opencodex.sh 完整移植 + Claude CLI 对接
 
 ### 📋 背景
 
-项目最初的 Codex 插件/marketplace 管理依赖 `opencodex.sh`（1477 行 Bash + 894 行内嵌 Python）。此轮迭代将其逻辑完整移植到 Go，同时将 Claude 的插件管理改为调用原生 `claude plugin ...` CLI 命令。
+项目最初的 Codex 插件/marketplace 管理依赖 `opencodex.sh`（1477 行 Bash + 894 行内嵌 Python）。此轮迭代将其逻辑完整移植到 Go（即当前 openskills），同时将 Claude 的插件管理改为调用原生 `claude plugin ...` CLI 命令。
 
 ### 🏗️ 新增包：`internal/codexmgr/`（8 个文件）
 
-完整移植 opencodex.sh 中 Python 管理器的全部逻辑：
+完整移植原 opencodex.sh 中 Python 管理器的全部逻辑：
 
-| 文件 | 行数 | 对应 opencodex.sh 功能 |
+| 文件 | 行数 | 对应原 opencodex.sh 功能 |
 |------|------|----------------------|
 | `paths.go` | ~65 | 路径常量（`$STATE_DIR`、`$REGISTRY_FILE` 等） |
 | `version.go` | ~85 | codex-cli 版本检测，最低要求 0.117.0 |
@@ -176,8 +176,8 @@ Docs: https://github.com/lovelyJason/openskills
 #### 关键移植细节
 
 - **JSON-RPC 协议**：通过 `codex app-server --listen stdio://` 的 stdio 传输，newline-delimited JSON，initialize→initialized→method 三步握手
-- **Fallback 机制**：RPC 失败时手动拷贝到 `~/.codex/plugins/cache/opencodex-local/<localName>/local/` + 写 config.toml
-- **命名兼容**：保持 opencodex.sh 的 `<marketplace>--<plugin>` localName 格式和 `opencodex-local` marketplace 名称
+- **Fallback 机制**：RPC 失败时手动拷贝到 `~/.codex/plugins/cache/openskills-local/<localName>/local/` + 写 config.toml
+- **命名兼容**：保持 `<marketplace>--<plugin>` localName 格式，marketplace 名称已更新为 `openskills-local`
 
 ### 🏗️ 新增包：`internal/claudecli/`（1 个文件）
 

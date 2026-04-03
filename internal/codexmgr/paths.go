@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	LocalMarketplaceName    = "opencodex-local"
-	LocalMarketplaceDisplay = "OpenCodex Local"
+	LocalMarketplaceName    = "openskills-local"
+	LocalMarketplaceDisplay = "OpenSkills Local"
 )
 
 func stateDir() string {
-	return filepath.Join(paths.CodexHome(), "opencodex")
+	return filepath.Join(paths.CodexHome(), "openskills")
 }
 
 func pluginStateFile() string {

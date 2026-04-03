@@ -195,7 +195,9 @@ func (a *App) marketplaceListCmd() *cobra.Command {
 }
 
 func (a *App) marketplaceUpdateCmd() *cobra.Command {
-	return &cobra.Command{
+	var targetFlags []string
+
+	cmd := &cobra.Command{
 		Use:   "update [name...]",
 		Short: "Update marketplace repositories",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -217,6 +219,15 @@ func (a *App) marketplaceUpdateCmd() *cobra.Command {
 				}
 			}
 
+			targetNames, err := a.resolveTargets(targetFlags)
+			if err != nil {
+				return err
+			}
+			selectedTargets := make(map[string]bool, len(targetNames))
+			for _, t := range targetNames {
+				selectedTargets[t] = true
+			}
+
 			for _, m := range targets {
 				if m.PinnedVer != "" {
 					ui.Warn("%s is pinned to %s, skipping", m.Name, m.PinnedVer)
@@ -231,6 +242,9 @@ func (a *App) marketplaceUpdateCmd() *cobra.Command {
 				st.UpsertMarketplace(m)
 
 				a.fireMarketplaceHooks(func(hook target.MarketplaceHook, adapterName string) {
+					if len(selectedTargets) > 0 && !selectedTargets[adapterName] {
+						return
+					}
 					spin.Update(fmt.Sprintf("[%s] Syncing %s ...", adapterName, m.Name))
 					if err := hook.OnMarketplaceUpdate(context.Background(), m.Name, m.LocalPath); err != nil {
 						ui.Warn("[%s] update hook: %v", adapterName, err)
@@ -244,6 +258,9 @@ func (a *App) marketplaceUpdateCmd() *cobra.Command {
 			return a.stateMgr.Save(st)
 		},
 	}
+
+	cmd.Flags().StringSliceVarP(&targetFlags, "target", "t", nil, "Target editors (codex,claude,cursor)")
+	return cmd
 }
 
 func (a *App) marketplaceRemoveCmd() *cobra.Command {

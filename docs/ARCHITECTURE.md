@@ -162,8 +162,8 @@ Native 模式下直接拷贝到编辑器目录，不经过中间层。
       "targets": {
         "codex": {
           "installedAt": "2026-04-01T10:00:00Z",
-          "paths": ["~/.codex/plugins/cache/opencodex-local/tsai-marketplace--jira-to-code/local/"],
-          "configEntries": ["[plugins.\"tsai-marketplace--jira-to-code@opencodex-local\"]"]
+          "paths": ["~/.codex/plugins/cache/openskills-local/tsai-marketplace--jira-to-code/local/"],
+          "configEntries": ["[plugins.\"tsai-marketplace--jira-to-code@openskills-local\"]"]
         },
         "claude": {
           "installedAt": "2026-04-01T10:05:00Z",
@@ -266,7 +266,7 @@ openskills/
 
 ### 历史沿革
 
-项目最初以单文件 shell 脚本 `opencodex.sh` 实现，其中内嵌了大段 Python 代码来处理 JSON 操作和插件管理逻辑（纯 Bash 难以胜任）。后来用 Go 重写为当前架构，`codexmgr/` 包的核心逻辑（`scanRepoPlugins`、`syncAggregate`、`normalizeLocalName` 等）即源自那段 Python 代码的直接移植。`opencodex.sh` 现仅作为历史参考保留在仓库中。
+项目最初以单文件 shell 脚本 `opencodex.sh` 实现，其中内嵌了大段 Python 代码来处理 JSON 操作和插件管理逻辑（纯 Bash 难以胜任）。后来用 Go 重写为当前的 openskills 架构，`codexmgr/` 包的核心逻辑（`scanRepoPlugins`、`syncAggregate`、`normalizeLocalName` 等）即源自那段 Python 代码的直接移植。`opencodex.sh` 现已废弃，仅作为历史参考保留在仓库中。
 
 ## 🔌 Target Adapter 系统
 
@@ -299,7 +299,7 @@ type VersionChecker interface {
 }
 ```
 
-### Codex Adapter（完整移植自 opencodex.sh）
+### Codex Adapter（完整移植自原 opencodex.sh）
 
 Codex 的插件系统最为复杂，底层由 `codexmgr/` 包驱动：
 
@@ -307,7 +307,7 @@ Codex 的插件系统最为复杂，底层由 `codexmgr/` 包驱动：
   1. 插件源被拷贝到 `~/plugins/<marketplace>--<plugin>/`（prepared copy），manifest 中的 `name` 字段被改写为 `localName`
   2. 聚合所有 marketplace 的插件到 `~/.agents/plugins/marketplace.json`
   3. 尝试通过 JSON-RPC 调用 `codex app-server --listen stdio://` 的 `plugin/install` 方法
-  4. RPC 失败时自动 fallback：手动拷贝到 `~/.codex/plugins/cache/opencodex-local/<localName>/local/` + 写入 `config.toml`
+  4. RPC 失败时自动 fallback：手动拷贝到 `~/.codex/plugins/cache/openskills-local/<localName>/local/` + 写入 `config.toml`
 - 🎓 **技能**: 软链接/拷贝到 `~/.agents/skills/<name>`
 - 📌 **版本要求**: codex-cli >= 0.117.0，低于此版本报错跳过
 - 🔗 **MarketplaceHook**: marketplace 操作时同步更新 Codex 注册表 + 重新聚合
@@ -345,18 +345,18 @@ $ openskills plugin install jira-to-code --target codex,claude
 
 | 路径 | 用途 |
 |------|------|
-| `~/.codex/opencodex/marketplaces.json` | Codex 侧的市场注册表 |
-| `~/.codex/opencodex/plugins.json` | Codex 侧的插件状态 |
+| `~/.codex/openskills/marketplaces.json` | Codex 侧的市场注册表 |
+| `~/.codex/openskills/plugins.json` | Codex 侧的插件状态 |
 | `~/.agents/plugins/marketplace.json` | 聚合后的本地 marketplace（Codex 读取） |
 | `~/plugins/<localName>/` | 已准备的插件副本（manifest 已改写） |
-| `~/.codex/plugins/cache/opencodex-local/<localName>/local/` | 插件缓存（Codex 运行时读取） |
+| `~/.codex/plugins/cache/openskills-local/<localName>/local/` | 插件缓存（Codex 运行时读取） |
 | `~/.codex/config.toml` | 插件启用/禁用配置 |
 
 ### 命名规则
 
 - `localName` = `<marketplace>--<plugin>`（双横线分隔）
-- 本地 marketplace 名称 = `opencodex-local`
-- config.toml 段 = `[plugins."<localName>@opencodex-local"]`
+- 本地 marketplace 名称 = `openskills-local`
+- config.toml 段 = `[plugins."<localName>@openskills-local"]`
 
 ### JSON-RPC 协议
 

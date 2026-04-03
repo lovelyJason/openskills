@@ -152,7 +152,7 @@ func (m *Manager) InstalledPluginList() (map[string]bool, error) {
 	return installedPluginsFromConfig()
 }
 
-// RegisteredPlugins returns all plugins from the opencodex plugin state
+// RegisteredPlugins returns all plugins from the openskills plugin state
 // (registered via marketplace add / sync), regardless of install status.
 func (m *Manager) RegisteredPlugins() ([]PluginDescriptor, error) {
 	ps, err := loadPluginState()
