@@ -5,13 +5,13 @@
 class Openskills < Formula
   desc "AI editor extension manager — manage plugins, skills, and marketplaces across Codex, Claude, Cursor"
   homepage "https://github.com/lovelyJason/openskills"
-  version "0.2.0"
+  version "0.2.1"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.0/openskills_0.2.0_darwin_amd64.tar.gz"
-      sha256 "a91dd388c3de31507c9ccc18432d206745e2aa9fb37b150bf98f57267874441b"
+      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.1/openskills_0.2.1_darwin_amd64.tar.gz"
+      sha256 "5c1f5787a8e61bc5b530753953afe589f6961ae2f416de47e5a4ce2cc300da26"
 
       define_method(:install) do
         bin.install "openskills"
@@ -19,8 +19,8 @@ class Openskills < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.0/openskills_0.2.0_darwin_arm64.tar.gz"
-      sha256 "a739a9b189b047c380cac9b26a103c2057b306ee92a807a8ab8b13552f662220"
+      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.1/openskills_0.2.1_darwin_arm64.tar.gz"
+      sha256 "f795356e4999dee94ff6d7ccad73b6303c5835756f96f1e23557027eb4a9ad73"
 
       define_method(:install) do
         bin.install "openskills"
@@ -31,16 +31,16 @@ class Openskills < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.0/openskills_0.2.0_linux_amd64.tar.gz"
-      sha256 "25aa218957a4f9118f1139d51b62bb17bb70dd33d167d41fd69b6bfddbf553cf"
+      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.1/openskills_0.2.1_linux_amd64.tar.gz"
+      sha256 "b7cf98630dab7c6f4a0b95ab16fb08e811ee23623e7e2c7f31b62b30f8cbc081"
       define_method(:install) do
         bin.install "openskills"
         bin.install_symlink "openskills" => "osk"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.0/openskills_0.2.0_linux_arm64.tar.gz"
-      sha256 "3f789f8d84996953b1dc37294baf889f5e37a7f77562cc59991c7658ff9ab41b"
+      url "https://github.com/lovelyJason/openskills/releases/download/v0.2.1/openskills_0.2.1_linux_arm64.tar.gz"
+      sha256 "9fc449d1cff4cb195ba4c49fdfb78cc957f7e899f570ea27ee75b76e6e278447"
       define_method(:install) do
         bin.install "openskills"
         bin.install_symlink "openskills" => "osk"
