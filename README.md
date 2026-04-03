@@ -92,7 +92,7 @@ plugins/
 
 plugin.json怎么书写参考~/.codex/skills/.system/plugin-creator中的描述即可
 
-只有符合此规范的仓库才能作为 Codex 插件安装。添加 marketplace 时，如果仓库中没有 `plugins/` 目录，Codex 选项会自动置灰不可选。
+只有符合此规范的仓库才能作为 Codex 插件安装。添加 marketplace 时，如果仓库中没有 `plugins/` 目录，Codex 选项会自动置灰不可选。（😭 迫切需要一个AI界的秦始皇，统一插件和skill机制）
 
 ### Claude
 

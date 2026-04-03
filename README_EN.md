@@ -92,7 +92,7 @@ plugins/
 
 Refer to `~/.codex/skills/.system/plugin-creator` for how to write plugin.json.
 
-Only repos following this convention can be installed as Codex plugins. When adding a marketplace, if the repo lacks a `plugins/` directory, the Codex option is greyed out and unselectable.
+Only repos following this convention can be installed as Codex plugins. When adding a marketplace, if the repo lacks a `plugins/` directory, the Codex option is greyed out and unselectable. (😭 Desperately need a "First Emperor" of the AI world to unify plugin and skill standards)
 
 ### Claude
 
